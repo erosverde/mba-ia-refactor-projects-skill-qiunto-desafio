@@ -1,6 +1,6 @@
 # code-smells-project
 
-API de E-commerce em Python/Flask usada como entrada do desafio `refactor-arch`.
+API de e-commerce em Python/Flask usada no desafio `refactor-arch`.
 
 ## Como rodar
 
@@ -9,4 +9,15 @@ pip install -r requirements.txt
 python app.py
 ```
 
-A aplicação sobe em `http://localhost:5000`. O banco SQLite (`loja.db`) é criado automaticamente no primeiro boot, já com produtos e usuários de exemplo.
+A API roda em `http://127.0.0.1:5000` por padrão. Configure `LOJA_HOST`, `LOJA_PORT`, `LOJA_DB` ou `LOJA_SECRET_KEY` pelo ambiente quando necessário. O SQLite inicializa o esquema e os produtos de exemplo. Crie uma conta pela rota `POST /usuarios` para testar o login.
+
+## Manutenção local
+
+As rotas administrativas HTTP respondem 403. A partir da pasta do projeto, use:
+
+```bash
+python -m flask --app app reset-password usuario@example.test
+python -m flask --app app reset-db
+```
+
+Contas legadas com senha em texto claro exigem redefinição local para voltar a autenticar. O comando de reset do banco solicita confirmação e apaga os dados da loja. Confira o arquivo apontado por `LOJA_DB` antes de executar.
