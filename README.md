@@ -90,3 +90,22 @@ Para validar as aplicações refatoradas, instale as dependências dentro da pas
 | [code-smells-project](code-smells-project/README.md) | `python -m pip install -r requirements.txt` e `python app.py` | Configure `LOJA_DB` para um arquivo temporário. Confira o health check, os fluxos de catálogo, login e pedidos e o bloqueio das rotas administrativas. |
 | [ecommerce-api-legacy](ecommerce-api-legacy/README.md) | `npm ci` com npm compatível com o lockfile e `npm start` | Use [api.http](ecommerce-api-legacy/api.http) com credencial administrativa local. Para checkout simulado, configure `NODE_ENV=test` e `PAYMENT_MODE=test`. O SQLite já roda em memória. |
 | [task-manager-api](task-manager-api/README.md) | `python -m pip install -r requirements.txt` e `python app.py` | Configure `TASK_DATABASE_URI` para um SQLite temporário. Prepare contas de teste, faça login e compare as respostas com token de administrador, token de conta comum e credencial ausente. |
+
+### Validação automatizada das 44 rotas
+
+A partir da raiz, instale as dependências Python em ambientes separados. Os projetos fixam versões diferentes do Flask. Instale também as dependências Node com um npm compatível com o lockfile.
+
+```powershell
+python -m venv .venv/shop
+python -m venv .venv/task
+.\.venv/shop\Scripts\python.exe -m pip install -r code-smells-project/requirements.txt
+.\.venv/task\Scripts\python.exe -m pip install -r task-manager-api/requirements.txt
+npm --prefix ecommerce-api-legacy ci
+python scripts/validate_routes.py --shop-python .venv/shop/Scripts/python.exe --task-python .venv/task/Scripts/python.exe
+```
+
+Em Linux ou macOS, use `.venv/shop/bin/python` e `.venv/task/bin/python` no lugar dos caminhos `Scripts/python.exe`. Use `--node` para indicar outro executável Node, se necessário. Os diretórios dos ambientes podem ficar fora do repositório.
+
+O [executor](scripts/validate_routes.py) valida 19 rotas da loja, 3 da API Express e 22 do Task Manager. As duas suítes Flask usam o cliente de testes e arquivos SQLite temporários. A suíte Express usa HTTP em localhost em portas efêmeras e SQLite em memória. Cada suíte usa dados fictícios. As verificações cobrem os status, campos de resposta e efeitos no banco, incluindo 403 esperado nas rotas administrativas da loja, autenticação no Express e escopo por usuário no Task Manager.
+
+Uma execução bem-sucedida termina com `PASS: 44/44 contratos HTTP`. Uma falha retorna código de saída diferente de zero.
