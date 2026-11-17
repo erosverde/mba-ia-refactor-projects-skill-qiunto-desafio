@@ -1,6 +1,6 @@
 # Análise manual — `code-smells-project`
 
-A tabela reúne **14 achados** identificados por leitura do código. As ocorrências repetidas aparecem na mesma linha, com as respectivas referências. Os impactos foram avaliados por análise estática.
+A tabela reúne **15 achados** identificados por leitura do código. As ocorrências repetidas aparecem na mesma linha, com as respectivas referências. Os impactos foram avaliados por análise estática.
 
 | Achado | Arquivo | Linha | Severidade | Impacto |
 |---|---|---|---|---|
@@ -18,5 +18,6 @@ A tabela reúne **14 achados** identificados por leitura do código. As ocorrên
 | Respostas `500` devolvem detalhes internos de exceções | `controllers.py` e `app.py` | `controllers.py:22, 62, 96, 109, 126, 134, 144, 165, 186, 220, 227, 235, 255, 262, 292` e `app.py:78` | `MEDIUM` | Conforme a mensagem da exceção, o JSON pode revelar detalhes de implementação, como nomes de tabelas ou colunas e mensagens do SQLite. |
 | Exclusão física de produto pode deixar itens de pedido sem referência | `models.py` | 68–69, 192–196 e 224–228 | `MEDIUM` | Itens de pedidos podem continuar apontando para um produto já excluído. As listagens passam a mostrar `"Desconhecido"` no lugar do nome. |
 | Versão da API duplicada na raiz e no health check | `app.py` e `controllers.py` | `app.py:36` e `controllers.py:285` | `LOW` | Se uma atualização alterar apenas um dos valores, as duas rotas podem informar versões diferentes da mesma aplicação. |
+| Imports sem uso nos módulos de dados | `models.py` e `database.py` | `models.py:2` e `database.py:2` | `LOW` | Os imports de `sqlite3` no model e de `os` no módulo de conexão sugerem dependências que esses arquivos não usam, dificultando entender a fronteira de persistência. |
 
-**Total: 14 achados** — 6 `CRITICAL`, 2 `HIGH`, 5 `MEDIUM` e 1 `LOW`. O armazenamento em texto claro e a exposição por HTTP têm causas e verificações de correção próprias. O impacto no relatório de vendas depende de confirmar quais status contam como venda efetivada.
+**Total: 15 achados** — 6 `CRITICAL`, 2 `HIGH`, 5 `MEDIUM` e 2 `LOW`. O armazenamento em texto claro e a exposição por HTTP têm causas e verificações de correção próprias. O impacto no relatório de vendas depende de confirmar quais status contam como venda efetivada.

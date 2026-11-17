@@ -8,9 +8,9 @@ A análise manual seguiu o fluxo das rotas até a persistência e a resposta HTT
 
 | Projeto | Achados manuais | Exemplos e impacto |
 |---|---:|---|
-| [code-smells-project](code-smells-project/analise-manual-code-smells-project.md) | 14 | SQL recebido diretamente pela API, senhas expostas e estoque validado por item. Os efeitos incluem leitura ou alteração indevida, exposição de credenciais e saldo negativo. |
-| [ecommerce-api-legacy](ecommerce-api-legacy/analise-manual-ecommerce-api-legacy.md) | 3 | Dados de pagamento nos logs, consultas N+1 e matrículas sem referência após exclusão. Os efeitos incluem exposição de dados, custo crescente do relatório e perda do vínculo com o aluno. |
-| [task-manager-api](task-manager-api/analise-manual-task-manager-api.md) | 9 | Hashes expostos, operações sem autorização e contagens que carregavam todas as tarefas. Os efeitos incluem exposição de credenciais, alterações indevidas e uso crescente de memória. |
+| [code-smells-project](code-smells-project/analise-manual-code-smells-project.md) | 15 | SQL recebido diretamente pela API, senhas expostas e estoque validado por item. Os efeitos incluem leitura ou alteração indevida, exposição de credenciais e saldo negativo. |
+| [ecommerce-api-legacy](ecommerce-api-legacy/analise-manual-ecommerce-api-legacy.md) | 5 | Dados de pagamento nos logs, consultas N+1 e matrículas sem referência após exclusão. Os efeitos incluem exposição de dados, custo crescente do relatório e perda do vínculo com o aluno. |
+| [task-manager-api](task-manager-api/analise-manual-task-manager-api.md) | 11 | Hashes expostos, operações sem autorização e contagens que carregavam todas as tarefas. Os efeitos incluem exposição de credenciais, alterações indevidas e uso crescente de memória. |
 
 ## Construção da Skill
 

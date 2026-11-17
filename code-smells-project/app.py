@@ -54,17 +54,23 @@ def reset_db():
 
 @click.command("reset-password")
 @click.argument("email")
+@click.option("--user-id", type=click.IntRange(min=1), help="ID da conta quando o e-mail estiver duplicado.")
 @with_appcontext
-def reset_password(email):
+def reset_password(email, user_id):
     """Set a new password for an existing account."""
     senha = click.prompt("Nova senha", hide_input=True, confirmation_prompt=True)
     if not senha:
         raise click.ClickException("Senha obrigatória")
     db = get_db()
     with db:
-        result = db.execute("UPDATE usuarios SET senha = ? WHERE email = ?", (generate_password_hash(senha), email))
+        sql = "UPDATE usuarios SET senha = ? WHERE email = ?"
+        params = (generate_password_hash(senha), email)
+        if user_id is not None:
+            sql += " AND id = ?"
+            params += (user_id,)
+        result = db.execute(sql, params)
         if result.rowcount != 1:
-            raise click.ClickException("A operação requer exatamente uma conta com esse e-mail")
+            raise click.ClickException("Informe um e-mail único ou especifique o ID da conta com --user-id")
     click.echo("Senha redefinida")
 
 

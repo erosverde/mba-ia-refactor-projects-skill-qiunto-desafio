@@ -37,3 +37,7 @@ Separar roteamento, configuração, controllers e persistência. Preservar os 19
 - Casos adicionais verificaram 400 para filtro inválido, estoque inválido, quantidade acima do saldo e status inválido, 401 para senha incorreta e 404 para pedido inexistente.
 - Asserções no SQLite verificaram o hash da senha, a redução de estoque, a ausência de gravação no pedido rejeitado, a preservação do histórico após desativar o produto e a ausência de alterações pelas rotas administrativas.
 - Os comandos locais reset-password e reset-db passaram no banco temporário.
+
+## Revalidação na PR #1
+
+As 19 rotas passaram novamente com SQLite temporário. O teste versionado em code-smells-project/tests/test_email_registration.py cobre cadastro concorrente (201 e 409), autenticação de duplicatas legadas com senhas distintas e rejeição de login ambíguo até a redefinição local de uma conta pelo ID.

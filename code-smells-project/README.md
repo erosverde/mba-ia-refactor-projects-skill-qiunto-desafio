@@ -20,4 +20,6 @@ python -m flask --app app reset-password usuario@example.test
 python -m flask --app app reset-db
 ```
 
+Novos cadastros com e-mail já existente recebem 409. Para contas legadas com o mesmo e-mail, o login exige que a senha identifique uma única conta. Use `python -m flask --app app reset-password usuario@example.test --user-id 42` para redefinir uma conta específica sem alterar as outras.
+
 Contas legadas com senha em texto claro exigem redefinição local para voltar a autenticar. O comando de reset do banco solicita confirmação e apaga os dados da loja. Confira o arquivo apontado por `LOJA_DB` antes de executar.

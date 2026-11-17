@@ -149,6 +149,8 @@ def criar_usuario():
         return jsonify({"erro": "Nome, email e senha são obrigatórios"}), 400
 
     id = models.criar_usuario(nome, email, senha)
+    if id is None:
+        return jsonify({"erro": "E-mail já cadastrado"}), 409
     print("Usuário criado: " + email)
     return jsonify({"dados": {"id": id}, "sucesso": True}), 201
 

@@ -1,6 +1,6 @@
 # Análise manual — `task-manager-api`
 
-A tabela reúne **9 achados** identificados por leitura estática. As ocorrências repetidas aparecem na mesma linha, com as respectivas referências. Os caminhos são relativos à pasta do projeto.
+A tabela reúne **11 achados** identificados por leitura estática. As ocorrências repetidas aparecem na mesma linha, com as respectivas referências. Os caminhos são relativos à pasta do projeto.
 
 | Achado | Arquivo | Linha | Severidade | Impacto |
 |---|---|---|---|---|
@@ -13,5 +13,7 @@ A tabela reúne **9 achados** identificados por leitura estática. As ocorrênci
 | Consultas N+1 na listagem de tarefas, no resumo e nas categorias | `routes/task_routes.py`, `routes/report_routes.py` | `task_routes.py:14–51` e `report_routes.py:53–56, 159–163` | `MEDIUM` | A listagem busca usuários e categorias dentro do laço de tarefas, com consultas efetivas condicionadas ao cache da sessão. O resumo consulta tarefas por usuário e a listagem conta tarefas por categoria, elevando o custo conforme os dados crescem. |
 | Filtros numéricos da busca convertidos sem tratar valores inválidos | `routes/task_routes.py` | 261, 264 | `MEDIUM` | Um valor não numérico em `priority` ou `user_id` pode causar uma exceção e resultar em `500`, dificultando que o cliente identifique e corrija o filtro. |
 | Estatísticas carregam todas as tarefas para calcular atrasos | `routes/task_routes.py`, `routes/report_routes.py` | `task_routes.py:275–286` e `report_routes.py:15–36` | `MEDIUM` | As duas rotas fazem várias contagens e carregam a tabela de tarefas para avaliar atrasos em Python. O volume transferido do SQLite e o uso de memória crescem com o tamanho da tabela. |
+| Busca por chave primária usa a API legada `Query.get()` | `routes/task_routes.py`, `routes/user_routes.py` e `routes/report_routes.py` | `task_routes.py:42, 51, 67, 117, 122, 158, 188, 195, 227`; `user_routes.py:29, 94, 136, 155`; `report_routes.py:105, 192, 213` | `LOW` | Manter a interface legada aumenta o trabalho de manutenção na atualização da camada ORM. |
+| Relógio UTC usa `datetime.utcnow()` | `models/task.py`, `models/user.py`, `models/category.py` e `routes/report_routes.py` | `task.py:15–16, 52`; `user.py:14`; `category.py:11`; `report_routes.py:35, 42, 45, 71, 133` | `LOW` | A API foi depreciada no Python 3.12. A atualização precisa manter as comparações compatíveis com timestamps já persistidos no SQLite. |
 
-**Total: 9 achados** — 2 `CRITICAL`, 4 `HIGH` e 3 `MEDIUM`.
+**Total: 11 achados** — 2 `CRITICAL`, 4 `HIGH`, 3 `MEDIUM` e 2 `LOW`.

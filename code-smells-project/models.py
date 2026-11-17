@@ -99,22 +99,31 @@ def get_usuario_por_id(id):
 
 def login_usuario(email, senha):
     db = get_db()
-    row = db.execute("SELECT id, nome, email, tipo, senha FROM usuarios WHERE email = ?", (email,)).fetchone()
-    if row is None or not row["senha"]:
+    rows = db.execute("SELECT id, nome, email, tipo, senha FROM usuarios WHERE email = ?", (email,))
+    matched = None
+    for row in rows:
+        stored = row["senha"]
+        if stored and stored.startswith(("scrypt:", "pbkdf2:")) and check_password_hash(stored, senha):
+            if matched is not None:
+                return None
+            matched = row
+    if matched is None:
         return None
-    # Legacy plaintext credentials require a password reset outside the login flow.
-    if not row["senha"].startswith(("scrypt:", "pbkdf2:")) or not check_password_hash(row["senha"], senha):
-        return None
-    return {campo: row[campo] for campo in ("id", "nome", "email", "tipo")}
+    return {campo: matched[campo] for campo in ("id", "nome", "email", "tipo")}
 
 def criar_usuario(nome, email, senha, tipo="cliente"):
+    senha_hash = generate_password_hash(senha)
     db = get_db()
     with db:
         cursor = db.execute(
-            "INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)",
-            (nome, email, generate_password_hash(senha), tipo),
+            """
+            INSERT INTO usuarios (nome, email, senha, tipo)
+            SELECT ?, ?, ?, ?
+            WHERE NOT EXISTS (SELECT 1 FROM usuarios WHERE email = ?)
+            """,
+            (nome, email, senha_hash, tipo, email),
         )
-    return cursor.lastrowid
+    return cursor.lastrowid if cursor.rowcount == 1 else None
 
 def criar_pedido(usuario_id, itens):
     if type(usuario_id) is not int or usuario_id < 1 or not isinstance(itens, list):
