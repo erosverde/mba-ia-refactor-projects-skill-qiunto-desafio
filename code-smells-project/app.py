@@ -1,88 +1,78 @@
-from flask import Flask, jsonify, request
+import os
+
+import click
+from flask.cli import with_appcontext
+from werkzeug.security import generate_password_hash
+
+from flask import Flask, jsonify
 from flask_cors import CORS
-import controllers
-from database import get_db
+from werkzeug.exceptions import HTTPException
 
-app = Flask(__name__)
-app.config["SECRET_KEY"] = "minha-chave-super-secreta-123"
-app.config["DEBUG"] = True
-CORS(app)
+from database import close_db, get_db, init_db
+from routes import routes
+from settings import load_config
 
-app.add_url_rule("/produtos", "listar_produtos", controllers.listar_produtos, methods=["GET"])
-app.add_url_rule("/produtos/busca", "buscar_produtos", controllers.buscar_produtos, methods=["GET"])
-app.add_url_rule("/produtos/<int:id>", "buscar_produto", controllers.buscar_produto, methods=["GET"])
-app.add_url_rule("/produtos", "criar_produto", controllers.criar_produto, methods=["POST"])
-app.add_url_rule("/produtos/<int:id>", "atualizar_produto", controllers.atualizar_produto, methods=["PUT"])
-app.add_url_rule("/produtos/<int:id>", "deletar_produto", controllers.deletar_produto, methods=["DELETE"])
 
-app.add_url_rule("/usuarios", "listar_usuarios", controllers.listar_usuarios, methods=["GET"])
-app.add_url_rule("/usuarios/<int:id>", "buscar_usuario", controllers.buscar_usuario, methods=["GET"])
-app.add_url_rule("/usuarios", "criar_usuario", controllers.criar_usuario, methods=["POST"])
-app.add_url_rule("/login", "login", controllers.login, methods=["POST"])
+def create_app(config=None):
+    app = Flask(__name__)
+    app.config.update(load_config())
+    if config:
+        app.config.update(config)
+    CORS(app)
+    app.register_blueprint(routes)
+    app.cli.add_command(reset_db)
+    app.cli.add_command(reset_password)
+    app.teardown_appcontext(close_db)
 
-app.add_url_rule("/pedidos", "criar_pedido", controllers.criar_pedido, methods=["POST"])
-app.add_url_rule("/pedidos", "listar_todos_pedidos", controllers.listar_todos_pedidos, methods=["GET"])
-app.add_url_rule("/pedidos/usuario/<int:usuario_id>", "listar_pedidos_usuario", controllers.listar_pedidos_usuario, methods=["GET"])
-app.add_url_rule("/pedidos/<int:pedido_id>/status", "atualizar_status_pedido", controllers.atualizar_status_pedido, methods=["PUT"])
+    @app.errorhandler(HTTPException)
+    def http_error(error):
+        return jsonify({"erro": error.description}), error.code
 
-app.add_url_rule("/relatorios/vendas", "relatorio_vendas", controllers.relatorio_vendas, methods=["GET"])
+    @app.errorhandler(Exception)
+    def internal_error(error):
+        app.logger.error("Erro interno em operação da loja", exc_info=error)
+        return jsonify({"erro": "Erro interno"}), 500
 
-app.add_url_rule("/health", "health_check", controllers.health_check, methods=["GET"])
+    with app.app_context():
+        init_db()
+    return app
 
-@app.route("/")
-def index():
-    return jsonify({
-        "mensagem": "Bem-vindo à API da Loja",
-        "versao": "1.0.0",
-        "endpoints": {
-            "produtos": "/produtos",
-            "usuarios": "/usuarios",
-            "pedidos": "/pedidos",
-            "login": "/login",
-            "relatorios": "/relatorios/vendas",
-            "health": "/health"
-        }
-    })
 
-@app.route("/admin/reset-db", methods=["POST"])
-def reset_database():
+@click.command("reset-db")
+@click.confirmation_option(prompt="Excluir todos os dados da loja?")
+@with_appcontext
+def reset_db():
+    """Reset the store database using local operating-system access."""
     db = get_db()
-    cursor = db.cursor()
-    cursor.execute("DELETE FROM itens_pedido")
-    cursor.execute("DELETE FROM pedidos")
-    cursor.execute("DELETE FROM produtos")
-    cursor.execute("DELETE FROM usuarios")
-    db.commit()
-    print("!!! BANCO DE DADOS RESETADO !!!")
-    return jsonify({"mensagem": "Banco de dados resetado", "sucesso": True}), 200
+    with db:
+        db.execute("DELETE FROM itens_pedido")
+        db.execute("DELETE FROM pedidos")
+        db.execute("DELETE FROM produtos")
+        db.execute("DELETE FROM usuarios")
+    click.echo("Banco de dados resetado")
 
-@app.route("/admin/query", methods=["POST"])
-def executar_query():
-    dados = request.get_json()
-    query = dados.get("sql", "")
-    if not query:
-        return jsonify({"erro": "Query não informada"}), 400
 
+@click.command("reset-password")
+@click.argument("email")
+@click.option("--user-id", type=click.IntRange(min=1), help="ID da conta quando o e-mail estiver duplicado.")
+@with_appcontext
+def reset_password(email, user_id):
+    """Set a new password for an existing account."""
+    senha = click.prompt("Nova senha", hide_input=True, confirmation_prompt=True)
+    if not senha:
+        raise click.ClickException("Senha obrigatória")
     db = get_db()
-    cursor = db.cursor()
-    try:
-        cursor.execute(query)
-        if query.strip().upper().startswith("SELECT"):
-            rows = cursor.fetchall()
-            result = [dict(row) for row in rows]
-            return jsonify({"dados": result, "sucesso": True}), 200
-        else:
-            db.commit()
-            return jsonify({"mensagem": "Query executada", "sucesso": True}), 200
-    except Exception as e:
-        return jsonify({"erro": str(e)}), 500
+    with db:
+        sql = "UPDATE usuarios SET senha = ? WHERE email = ?"
+        params = (generate_password_hash(senha), email)
+        if user_id is not None:
+            sql += " AND id = ?"
+            params += (user_id,)
+        result = db.execute(sql, params)
+        if result.rowcount != 1:
+            raise click.ClickException("Informe um e-mail único ou especifique o ID da conta com --user-id")
+    click.echo("Senha redefinida")
+
 
 if __name__ == "__main__":
-
-    get_db()
-    print("=" * 50)
-    print("SERVIDOR INICIADO")
-    print("Rodando em http://localhost:5000")
-    print("=" * 50)
-
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    create_app().run(host=os.getenv("LOJA_HOST", "127.0.0.1"), port=int(os.getenv("LOJA_PORT", "5000")), debug=False)

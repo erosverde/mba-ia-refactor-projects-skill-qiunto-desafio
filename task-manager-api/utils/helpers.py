@@ -1,3 +1,4 @@
+from utils.clock import utc_now
 from datetime import datetime
 import re
 import os
@@ -35,7 +36,7 @@ def generate_id():
 
 def log_action(action, details=None):
 
-    timestamp = datetime.utcnow()
+    timestamp = utc_now()
     print(f"[{timestamp}] ACTION: {action}")
     if details:
         print(f"  DETAILS: {details}")

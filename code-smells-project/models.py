@@ -1,5 +1,5 @@
 from database import get_db
-import sqlite3
+from werkzeug.security import check_password_hash, generate_password_hash
 
 def get_todos_produtos():
     db = get_db()
@@ -25,7 +25,7 @@ def get_produto_por_id(id):
     db = get_db()
     cursor = db.cursor()
 
-    cursor.execute("SELECT * FROM produtos WHERE id = " + str(id))
+    cursor.execute("SELECT * FROM produtos WHERE id = ?", (id,))
     row = cursor.fetchone()
     if row:
         return {
@@ -42,37 +42,34 @@ def get_produto_por_id(id):
 
 def criar_produto(nome, descricao, preco, estoque, categoria):
     db = get_db()
-    cursor = db.cursor()
-
-    cursor.execute(
-        "INSERT INTO produtos (nome, descricao, preco, estoque, categoria) VALUES ('" +
-        nome + "', '" + descricao + "', " + str(preco) + ", " + str(estoque) + ", '" + categoria + "')"
-    )
-    db.commit()
+    with db:
+        cursor = db.execute(
+            "INSERT INTO produtos (nome, descricao, preco, estoque, categoria) VALUES (?, ?, ?, ?, ?)",
+            (nome, descricao, preco, estoque, categoria),
+        )
     return cursor.lastrowid
 
 def atualizar_produto(id, nome, descricao, preco, estoque, categoria):
     db = get_db()
-    cursor = db.cursor()
-    cursor.execute(
-        "UPDATE produtos SET nome = '" + nome + "', descricao = '" + descricao +
-        "', preco = " + str(preco) + ", estoque = " + str(estoque) +
-        ", categoria = '" + categoria + "' WHERE id = " + str(id)
-    )
-    db.commit()
-    return True
+    with db:
+        db.execute(
+            "UPDATE produtos SET nome = ?, descricao = ?, preco = ?, estoque = ?, categoria = ? WHERE id = ?",
+            (nome, descricao, preco, estoque, categoria, id),
+        )
 
 def deletar_produto(id):
     db = get_db()
-    cursor = db.cursor()
-    cursor.execute("DELETE FROM produtos WHERE id = " + str(id))
-    db.commit()
-    return True
+    with db:
+        db.execute("BEGIN IMMEDIATE")
+        if db.execute("SELECT 1 FROM itens_pedido WHERE produto_id = ? LIMIT 1", (id,)).fetchone():
+            db.execute("UPDATE produtos SET ativo = 0 WHERE id = ?", (id,))
+        else:
+            db.execute("DELETE FROM produtos WHERE id = ?", (id,))
 
 def get_todos_usuarios():
     db = get_db()
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM usuarios")
+    cursor.execute("SELECT id, nome, email, tipo, criado_em FROM usuarios")
     rows = cursor.fetchall()
     result = []
     for row in rows:
@@ -80,7 +77,6 @@ def get_todos_usuarios():
             "id": row["id"],
             "nome": row["nome"],
             "email": row["email"],
-            "senha": row["senha"],
             "tipo": row["tipo"],
             "criado_em": row["criado_em"]
         })
@@ -89,14 +85,13 @@ def get_todos_usuarios():
 def get_usuario_por_id(id):
     db = get_db()
     cursor = db.cursor()
-    cursor.execute("SELECT * FROM usuarios WHERE id = " + str(id))
+    cursor.execute("SELECT id, nome, email, tipo, criado_em FROM usuarios WHERE id = ?", (id,))
     row = cursor.fetchone()
     if row:
         return {
             "id": row["id"],
             "nome": row["nome"],
             "email": row["email"],
-            "senha": row["senha"],
             "tipo": row["tipo"],
             "criado_em": row["criado_em"]
         }
@@ -104,133 +99,103 @@ def get_usuario_por_id(id):
 
 def login_usuario(email, senha):
     db = get_db()
-    cursor = db.cursor()
-
-    cursor.execute(
-        "SELECT * FROM usuarios WHERE email = '" + email + "' AND senha = '" + senha + "'"
-    )
-    row = cursor.fetchone()
-    if row:
-        return {
-            "id": row["id"],
-            "nome": row["nome"],
-            "email": row["email"],
-            "tipo": row["tipo"]
-        }
-    return None
+    rows = db.execute("SELECT id, nome, email, tipo, senha FROM usuarios WHERE email = ?", (email,))
+    matched = None
+    for row in rows:
+        stored = row["senha"]
+        if stored and stored.startswith(("scrypt:", "pbkdf2:")) and check_password_hash(stored, senha):
+            if matched is not None:
+                return None
+            matched = row
+    if matched is None:
+        return None
+    return {campo: matched[campo] for campo in ("id", "nome", "email", "tipo")}
 
 def criar_usuario(nome, email, senha, tipo="cliente"):
+    senha_hash = generate_password_hash(senha)
     db = get_db()
-    cursor = db.cursor()
-
-    cursor.execute(
-        "INSERT INTO usuarios (nome, email, senha, tipo) VALUES ('" +
-        nome + "', '" + email + "', '" + senha + "', '" + tipo + "')"
-    )
-    db.commit()
-    return cursor.lastrowid
+    with db:
+        cursor = db.execute(
+            """
+            INSERT INTO usuarios (nome, email, senha, tipo)
+            SELECT ?, ?, ?, ?
+            WHERE NOT EXISTS (SELECT 1 FROM usuarios WHERE email = ?)
+            """,
+            (nome, email, senha_hash, tipo, email),
+        )
+    return cursor.lastrowid if cursor.rowcount == 1 else None
 
 def criar_pedido(usuario_id, itens):
+    if type(usuario_id) is not int or usuario_id < 1 or not isinstance(itens, list):
+        return {"erro": "Usuário ou itens inválidos"}
+    quantidades = {}
+    for item in itens:
+        if not isinstance(item, dict):
+            return {"erro": "Item inválido"}
+        produto_id, quantidade = item.get("produto_id"), item.get("quantidade")
+        if type(produto_id) is not int or type(quantidade) is not int or min(produto_id, quantidade) < 1:
+            return {"erro": "Produto e quantidade devem ser inteiros positivos"}
+        quantidades[produto_id] = quantidades.get(produto_id, 0) + quantidade
+
     db = get_db()
-    cursor = db.cursor()
-
-    total = 0
-
-    for item in itens:
-        cursor.execute("SELECT * FROM produtos WHERE id = " + str(item["produto_id"]))
-        produto = cursor.fetchone()
-        if produto is None:
-            return {"erro": "Produto " + str(item["produto_id"]) + " não encontrado"}
-        if produto["estoque"] < item["quantidade"]:
-            return {"erro": "Estoque insuficiente para " + produto["nome"]}
-        total = total + (produto["preco"] * item["quantidade"])
-
-    cursor.execute(
-        "INSERT INTO pedidos (usuario_id, status, total) VALUES (" +
-        str(usuario_id) + ", 'pendente', " + str(total) + ")"
-    )
-    pedido_id = cursor.lastrowid
-
-    for item in itens:
-        cursor.execute("SELECT preco FROM produtos WHERE id = " + str(item["produto_id"]))
-        produto = cursor.fetchone()
-        cursor.execute(
-            "INSERT INTO itens_pedido (pedido_id, produto_id, quantidade, preco_unitario) VALUES (" +
-            str(pedido_id) + ", " + str(item["produto_id"]) + ", " +
-            str(item["quantidade"]) + ", " + str(produto["preco"]) + ")"
-        )
-
-        cursor.execute(
-            "UPDATE produtos SET estoque = estoque - " + str(item["quantidade"]) +
-            " WHERE id = " + str(item["produto_id"])
-        )
-
-    db.commit()
-    return {"pedido_id": pedido_id, "total": total}
+    try:
+        with db:
+            db.execute("BEGIN IMMEDIATE")
+            produtos = {}
+            for produto_id, quantidade in quantidades.items():
+                produto = db.execute("SELECT preco, estoque FROM produtos WHERE id = ? AND ativo = 1", (produto_id,)).fetchone()
+                if produto is None or produto["estoque"] < quantidade:
+                    raise ValueError("Produto indisponível ou estoque insuficiente")
+                produtos[produto_id] = produto["preco"]
+            total = sum(produtos[id] * quantidade for id, quantidade in quantidades.items())
+            pedido = db.execute(
+                "INSERT INTO pedidos (usuario_id, status, total) VALUES (?, 'pendente', ?)",
+                (usuario_id, total),
+            ).lastrowid
+            for produto_id, quantidade in quantidades.items():
+                baixa = db.execute(
+                    "UPDATE produtos SET estoque = estoque - ? WHERE id = ? AND estoque >= ?",
+                    (quantidade, produto_id, quantidade),
+                )
+                if baixa.rowcount != 1:
+                    raise ValueError("Estoque insuficiente")
+            db.executemany(
+                "INSERT INTO itens_pedido (pedido_id, produto_id, quantidade, preco_unitario) VALUES (?, ?, ?, ?)",
+                [(pedido, item["produto_id"], item["quantidade"], produtos[item["produto_id"]]) for item in itens],
+            )
+    except ValueError as error:
+        return {"erro": str(error)}
+    return {"pedido_id": pedido, "total": total}
 
 def get_pedidos_usuario(usuario_id):
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT * FROM pedidos WHERE usuario_id = " + str(usuario_id))
-    rows = cursor.fetchall()
-    result = []
-    for row in rows:
-        pedido = {
-            "id": row["id"],
-            "usuario_id": row["usuario_id"],
-            "status": row["status"],
-            "total": row["total"],
-            "criado_em": row["criado_em"],
-            "itens": []
-        }
-
-        cursor2 = db.cursor()
-        cursor2.execute("SELECT * FROM itens_pedido WHERE pedido_id = " + str(row["id"]))
-        itens = cursor2.fetchall()
-        for item in itens:
-            cursor3 = db.cursor()
-            cursor3.execute("SELECT nome FROM produtos WHERE id = " + str(item["produto_id"]))
-            prod = cursor3.fetchone()
-            pedido["itens"].append({
-                "produto_id": item["produto_id"],
-                "produto_nome": prod["nome"] if prod else "Desconhecido",
-                "quantidade": item["quantidade"],
-                "preco_unitario": item["preco_unitario"]
-            })
-        result.append(pedido)
-    return result
+    return _listar_pedidos(usuario_id)
 
 def get_todos_pedidos():
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("SELECT * FROM pedidos")
-    rows = cursor.fetchall()
-    result = []
-    for row in rows:
+    return _listar_pedidos()
 
-        pedido = {
-            "id": row["id"],
-            "usuario_id": row["usuario_id"],
-            "status": row["status"],
-            "total": row["total"],
-            "criado_em": row["criado_em"],
-            "itens": []
-        }
-        cursor2 = db.cursor()
-        cursor2.execute("SELECT * FROM itens_pedido WHERE pedido_id = " + str(row["id"]))
-        itens = cursor2.fetchall()
-        for item in itens:
-            cursor3 = db.cursor()
-            cursor3.execute("SELECT nome FROM produtos WHERE id = " + str(item["produto_id"]))
-            prod = cursor3.fetchone()
-            pedido["itens"].append({
-                "produto_id": item["produto_id"],
-                "produto_nome": prod["nome"] if prod else "Desconhecido",
-                "quantidade": item["quantidade"],
-                "preco_unitario": item["preco_unitario"]
-            })
-        result.append(pedido)
-    return result
+def _listar_pedidos(usuario_id=None):
+    sql = """
+        SELECT p.id, p.usuario_id, p.status, p.total, p.criado_em,
+               i.id AS item_id, i.produto_id, i.quantidade, i.preco_unitario,
+               produto.nome AS produto_nome
+        FROM pedidos p
+        LEFT JOIN itens_pedido i ON i.pedido_id = p.id
+        LEFT JOIN produtos produto ON produto.id = i.produto_id
+    """
+    params = ()
+    if usuario_id is not None:
+        sql += " WHERE p.usuario_id = ?"
+        params = (usuario_id,)
+    pedidos = {}
+    for row in get_db().execute(sql + " ORDER BY p.id, i.id", params):
+        if row["id"] not in pedidos:
+            pedidos[row["id"]] = {campo: row[campo] for campo in ("id", "usuario_id", "status", "total", "criado_em")}
+            pedidos[row["id"]]["itens"] = []
+        if row["item_id"] is not None:
+            item = {campo: row[campo] for campo in ("produto_id", "quantidade", "preco_unitario")}
+            item["produto_nome"] = row["produto_nome"] if row["produto_nome"] is not None else "Desconhecido"
+            pedidos[row["id"]]["itens"].append(item)
+    return list(pedidos.values())
 
 def relatorio_vendas():
     db = get_db()
@@ -274,29 +239,29 @@ def relatorio_vendas():
 
 def atualizar_status_pedido(pedido_id, novo_status):
     db = get_db()
-    cursor = db.cursor()
-
-    cursor.execute(
-        "UPDATE pedidos SET status = '" + novo_status + "' WHERE id = " + str(pedido_id)
-    )
-    db.commit()
-    return True
+    with db:
+        return db.execute("UPDATE pedidos SET status = ? WHERE id = ?", (novo_status, pedido_id)).rowcount == 1
 
 def buscar_produtos(termo, categoria=None, preco_min=None, preco_max=None):
     db = get_db()
     cursor = db.cursor()
 
-    query = "SELECT * FROM produtos WHERE 1=1"
+    clauses = []
+    params = []
     if termo:
-        query += " AND (nome LIKE '%" + termo + "%' OR descricao LIKE '%" + termo + "%')"
+        clauses.append("(nome LIKE ? OR descricao LIKE ?)")
+        params.extend([f"%{termo}%"] * 2)
     if categoria:
-        query += " AND categoria = '" + categoria + "'"
-    if preco_min:
-        query += " AND preco >= " + str(preco_min)
-    if preco_max:
-        query += " AND preco <= " + str(preco_max)
-
-    cursor.execute(query)
+        clauses.append("categoria = ?")
+        params.append(categoria)
+    for limite, operador in ((preco_min, ">="), (preco_max, "<=")):
+        if limite is not None:
+            clauses.append(f"preco {operador} ?")
+            params.append(limite)
+    query = "SELECT * FROM produtos"
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
+    cursor.execute(query, params)
     rows = cursor.fetchall()
     result = []
     for row in rows:
