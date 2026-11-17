@@ -1,0 +1,22 @@
+# Análise manual — `code-smells-project`
+
+A tabela reúne **14 achados** identificados por leitura do código. As ocorrências repetidas aparecem na mesma linha, com as respectivas referências. Os impactos foram avaliados por análise estática.
+
+| Achado | Arquivo | Linha | Severidade | Impacto |
+|---|---|---|---|---|
+| Execução de SQL arbitrário em `POST /admin/query` | `app.py` | 59–76, especialmente 62, 69 e 75 | `CRITICAL` | Quem conseguir acessar a rota pode ler dados ou persistir alterações e exclusões dentro das permissões da conexão SQLite. |
+| Reset do banco sem verificação de autorização na rota | `app.py` | 47–55 | `CRITICAL` | Quem tiver acesso à rota sem um controle externo pode apagar todos os registros de usuários, produtos, pedidos e itens, interrompendo os fluxos correspondentes. |
+| Injeção de SQL no login, na busca, no cadastro e na atualização de produtos | `models.py` | 109–111 (login), 289–299 (busca), 47–50 (cadastro), 57–61 (atualização) | `CRITICAL` | A concatenação de entradas pode comprometer a verificação de credenciais, ampliar o escopo de leitura da busca ou alterar os dados gravados no catálogo. Também pode quebrar operações com texto legítimo. |
+| Senhas armazenadas em texto claro no cadastro de usuários | `controllers.py` e `models.py` | `controllers.py:155, 160` e `models.py:126–130` | `CRITICAL` | Quem obtiver acesso de leitura ao banco ou a um backup pode recuperar as senhas e usá-las nas contas afetadas ou em outros serviços onde tenham sido reutilizadas. |
+| Senhas expostas na listagem e na consulta individual de usuários | `models.py` e `controllers.py` | `models.py:83, 99` e `controllers.py:132, 140` | `CRITICAL` | A listagem devolve as senhas dos usuários retornados e a consulta individual devolve a senha da conta encontrada. A exposição ocorre pela resposta HTTP. |
+| Chave secreta exposta na resposta de `GET /health` | `controllers.py` e `app.py` | `controllers.py:289` e `app.py:7` | `CRITICAL` | A resposta divulga um valor apresentado como segredo. Se corresponder à chave ativa do Flask, pode comprometer a integridade de dados assinados com ela. |
+| Conexão SQLite global compartilhada entre requisições | `database.py` | 4–11 | `HIGH` | Escritas concorrentes na mesma conexão podem interferir no estado das transações umas das outras. |
+| Validação de estoque ignora a quantidade acumulada por produto no pedido | `models.py` | 139–146 e 163–166 | `HIGH` | Se o mesmo produto aparecer em múltiplos itens, o pedido pode passar nas checagens individuais e persistir estoque negativo. |
+| Consultas N+1 em dois níveis nas listagens de pedidos | `models.py` | 174, 188, 192 (por usuário) e 206, 220, 224 (geral) | `MEDIUM` | Cada listagem executa uma consulta inicial, uma por pedido e uma por item. O trabalho no SQLite cresce com o volume e pode elevar a latência. |
+| Atualização de status retorna sucesso para pedido inexistente | `models.py` e `controllers.py` | `models.py:279–283` e `controllers.py:245, 252` | `MEDIUM` | Um `UPDATE` que afeta zero linhas pode gerar `200`. O cliente pode seguir o fluxo acreditando que o pedido foi atualizado. |
+| Faturamento e ticket médio incluem pedidos pendentes e cancelados | `models.py` | 239–243 e 256–272 | `MEDIUM` | Se os indicadores representarem vendas efetivadas, incluir esses pedidos pode superestimar o faturamento e distorcer o ticket médio e o desconto. |
+| Respostas `500` devolvem detalhes internos de exceções | `controllers.py` e `app.py` | `controllers.py:22, 62, 96, 109, 126, 134, 144, 165, 186, 220, 227, 235, 255, 262, 292` e `app.py:78` | `MEDIUM` | Conforme a mensagem da exceção, o JSON pode revelar detalhes de implementação, como nomes de tabelas ou colunas e mensagens do SQLite. |
+| Exclusão física de produto pode deixar itens de pedido sem referência | `models.py` | 68–69, 192–196 e 224–228 | `MEDIUM` | Itens de pedidos podem continuar apontando para um produto já excluído. As listagens passam a mostrar `"Desconhecido"` no lugar do nome. |
+| Versão da API duplicada na raiz e no health check | `app.py` e `controllers.py` | `app.py:36` e `controllers.py:285` | `LOW` | Se uma atualização alterar apenas um dos valores, as duas rotas podem informar versões diferentes da mesma aplicação. |
+
+**Total: 14 achados** — 6 `CRITICAL`, 2 `HIGH`, 5 `MEDIUM` e 1 `LOW`. O armazenamento em texto claro e a exposição por HTTP têm causas e verificações de correção próprias. O impacto no relatório de vendas depende de confirmar quais status contam como venda efetivada.
