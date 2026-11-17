@@ -1,31 +1,34 @@
 @baseUrl = http://localhost:3000
+@adminToken = replace-with-local-test-token
 
-### Checkout - sucesso
+### Checkout simulado — sucesso
 POST {{baseUrl}}/api/checkout
 Content-Type: application/json
 
 {
   "usr": "Guilherme",
-  "eml": "gui@fullcycle.com.br",
-  "pwd": "senhaforte",
+  "eml": "gui@example.test",
+  "pwd": "senha-local-de-teste",
   "c_id": 2,
-  "card": "4111222233334444"
+  "card": "4000000000000000"
 }
 
-### Checkout - pagamento recusado
+### Checkout simulado — pagamento recusado
 POST {{baseUrl}}/api/checkout
 Content-Type: application/json
 
 {
-  "usr": "João",
-  "eml": "joao@teste.com",
-  "pwd": "123",
+  "usr": "Teste",
+  "eml": "recusado@example.test",
+  "pwd": "senha-local-de-teste",
   "c_id": 1,
-  "card": "5111222233334444"
+  "card": "5000000000000000"
 }
 
 ### Relatório financeiro administrativo
 GET {{baseUrl}}/api/admin/financial-report
+Authorization: Bearer {{adminToken}}
 
-### Deletar usuário
+### Anonimizar usuário
 DELETE {{baseUrl}}/api/users/1
+Authorization: Bearer {{adminToken}}
